@@ -1,0 +1,29 @@
+name: Compilar C++
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  compilar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Bajar el repositorio
+        uses: actions/checkout@v4
+
+      - name: Instalar Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+
+      - name: Compilar logica.cpp a WebAssembly
+        run: emcc logica.cpp -O2 -o logica.js --no-entry "-sEXPORTED_FUNCTIONS=_recortarClave,_validarClave,_armarUrl" "-sEXPORTED_RUNTIME_METHODS=cwrap"
+
+      - name: Guardar logica.js y logica.wasm en el repositorio
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add logica.js logica.wasm
+          git commit -m "Compilar C++ a WebAssembly" || echo "Sin cambios"
+          git push
