@@ -18,7 +18,7 @@ jobs:
         uses: mymindstorm/setup-emsdk@v14
 
       - name: Compilar logica.cpp a WebAssembly
-        run: emcc logica.cpp -O2 -o logica.js --no-entry "-sEXPORTED_FUNCTIONS=_recortarClave,_validarClave,_armarUrl" "-sEXPORTED_RUNTIME_METHODS=cwrap"
+        run: em++ logica.cpp -O2 -o logica.js --no-entry "-sEXPORTED_FUNCTIONS=_recortarClave,_validarClave,_armarUrl" "-sEXPORTED_RUNTIME_METHODS=cwrap"
 
       - name: Guardar logica.js y logica.wasm en el repositorio
         run: |
