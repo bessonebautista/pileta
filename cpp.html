@@ -113,91 +113,51 @@ button:disabled{opacity:.6; cursor:not-allowed}
 </main>
 
 <script>
-// ====== Configuración ======
 const WRITE_KEY = "1XSRVFYJZDUTK1RQ";
-const CANAL = "3514883";
-// ===========================
 
-// Funciones que vienen de C++ (WebAssembly). Se cargan cuando termina de iniciar.
-let cpp = null;
+// Funciones de C++ (se cargan cuando termina de iniciar WebAssembly)
+let recortarClave, validarClave, armarUrl;
 var Module = {
   onRuntimeInitialized: function () {
-    cpp = {
-      recortarClave: Module.cwrap("recortarClave", "string", ["string"]),
-      validarClave:  Module.cwrap("validarClave", "number", ["string"]),
-      armarUrl:      Module.cwrap("armarUrl", "string", ["string", "string"])
-    };
+    recortarClave = Module.cwrap("recortarClave", "string", ["string"]);
+    validarClave  = Module.cwrap("validarClave", "number", ["string"]);
+    armarUrl      = Module.cwrap("armarUrl", "string", ["string", "string"]);
   }
 };
 </script>
 <script src="logica.js"></script>
 <script>
-const form = document.getElementById("formulario");
 const input = document.getElementById("clave");
-const boton = document.getElementById("boton");
 const msg = document.getElementById("mensaje");
 
-const ERRORES = {
-  1: "La clave tiene que empezar con <b>TAK</b>. Revisá que hayas copiado la <b>Clave API de alertas</b> y no otra.",
-  2: "La clave no parece completa. Copiala de nuevo, sin espacios en el medio.",
-  3: "La clave no parece completa. Copiala de nuevo, sin espacios en el medio."
-};
-
-function mostrar(tipo, html){ msg.className = tipo; msg.innerHTML = html; }
-
-function bloquear(segundos){
-  let t = segundos;
-  boton.disabled = true;
-  const id = setInterval(() => {
-    boton.textContent = "Esperá " + t + " s...";
-    if (--t < 0){ clearInterval(id); boton.disabled = false; boton.textContent = "Guardar mi clave"; }
-  }, 1000);
+function mostrar(tipo, texto) {
+  msg.className = tipo;
+  msg.innerHTML = texto;
 }
 
-async function verificar(clave){
-  try{
-    const r = await fetch("https://api.thingspeak.com/channels/" + CANAL + "/fields/1/last.json?_=" + Date.now());
-    const j = await r.json();
-    return j.field1 === clave;
-  }catch(e){ return null; }
-}
-
-form.addEventListener("submit", async (e) => {
+document.getElementById("formulario").addEventListener("submit", async function (e) {
   e.preventDefault();
-  if (!cpp){ mostrar("info", "Cargando... probá de nuevo en un segundo."); return; }
+  if (!validarClave) return mostrar("info", "Cargando... probá de nuevo en un segundo.");
 
-  // La lógica de validación está en C++
-  const clave = cpp.recortarClave(input.value);
+  // 1) C++ saca los espacios y revisa la clave
+  const clave = recortarClave(input.value);
   input.value = clave;
-  const codigo = cpp.validarClave(clave);
-  if (codigo !== 0){ mostrar("error", ERRORES[codigo]); return; }
+  const codigo = validarClave(clave);
+  if (codigo === 1) return mostrar("error", "La clave tiene que empezar con <b>TAK</b>.");
+  if (codigo !== 0) return mostrar("error", "La clave no parece completa o tiene espacios.");
 
-  boton.disabled = true;
+  // 2) C++ arma la dirección y JavaScript la manda a ThingSpeak
   mostrar("info", "Guardando...");
-  const url = cpp.armarUrl(WRITE_KEY, clave); // también en C++
-
-  try{
-    const r = await fetch(url);
-    const t = (await r.text()).trim();
-    if (/^[1-9]\d*$/.test(t)){
-      mostrar("ok", '<span class="tilde">✅</span> ¡Guardado! Ya vas a recibir los avisos de tu pileta en tu mail.');
-    }else{
+  try {
+    const respuesta = await fetch(armarUrl(WRITE_KEY, clave));
+    const numero = (await respuesta.text()).trim();
+    if (numero !== "0") {
+      mostrar("ok", "✅ ¡Guardado! Ya vas a recibir los avisos de tu pileta en tu mail.");
+    } else {
       mostrar("error", "No se pudo guardar. Esperá 15 segundos y probá de nuevo.");
     }
-    bloquear(15);
-  }catch(err){
-    if (!navigator.onLine){
-      mostrar("error", "No hay internet. Conectate y probá de nuevo.");
-      boton.disabled = false;
-      return;
-    }
-    const ok = await verificar(clave);
-    if (ok === true){
-      mostrar("ok", '<span class="tilde">✅</span> ¡Guardado! Ya vas a recibir los avisos de tu pileta en tu mail.');
-    }else{
-      mostrar("info", "Enviamos tu clave, pero no pudimos confirmarla desde acá. Avisale a quien instaló el sistema para que la verifique.");
-    }
-    bloquear(15);
+  } catch (error) {
+    mostrar("error", "No se pudo conectar. Revisá tu internet.");
   }
 });
 </script>
